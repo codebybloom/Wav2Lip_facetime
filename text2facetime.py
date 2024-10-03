@@ -1,5 +1,5 @@
 from TTS.api import TTS
-from transformers import pipeline, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import whisper
 from scipy.io.wavfile import write
 from playsound import playsound
@@ -19,22 +19,26 @@ from pydub import AudioSegment
 from pydub.playback import play
 import argparse
 import multiprocessing
-#loop = asyncio.new_event_loop()
+
+
 # Load models (text to speech and speech to text and llm)
 tts = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts")
-model_name = 'microsoft/phi-2'
-generator = pipeline("text-generation", model=model_name_or_path,device_map='cuda')#change to cpu if your cpu is struggling here
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+model_name_or_path = "Qwen/Qwen2-1.5B-Instruct"
+# To use a different branch, change revision
 
+generator = pipeline("text-generation", model=model_name_or_path,device_map='cuda')#change to cpu if your cpu is struggling here
+tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
 # Take bio
 conv_hist = ''
-user_input = 'new response'
 response = ''
-
+user_input=''
+llmparam = ''
+llmodel = ''
 demo = "Ian's persona: Ian is a man that enjoys coding in python to learn more about machine learning. Ian works with machine learning by researching vision transformers, large language models and text to speech models. Ian's full name is Ian Codes. Ian is 22 years old. He is nice and likes alternative music. He is very knowledgeable about coding with python.\n<START>\n[DIALOGUE HISTORY]\nIan: Hello there I am Ian, I love coding and researching machine learning.\nYou: Hi how is it going Ian.\nIan: I'm doing well how about you?\nYou: I'm good too just learning more about local language models on youtube.\nIan: Oh that's cool I just have been using old models like gpt neo."
 print('demo\n')
 print(demo)
 output_file_path = "passit_output.txt"
+config_file_path = "config.txt"
 with open(output_file_path, "w") as file:
     file.write(demo)
 
@@ -61,8 +65,7 @@ if __name__ == '__main__':
 
     for i in range(0,10):
         num = str(i)
-        newinput = input("Type response: ")
-        user_input = "\nYou: " + newinput
+        user_input = "\nYou: "+ input("Type response: ")
         if re.search(r"\.$", user_input):
             user_input = user_input.replace(r".$", r"\.\\n")
         conv_hist += user_input + '\n'
@@ -70,10 +73,29 @@ if __name__ == '__main__':
         # Model response
         user_input = demo + conv_hist
         try:
-            response = generator(user_input, max_new_tokens=25, do_sample=True, temperature=0.7, top_p=0.9,
-                                 repetition_penalty=1.1)[0]['generated_text']
+            with open("config.txt") as file:
+                bruhmoment = file.read()
+            bruhmoment = bruhmoment.split("\n")
+            llmparam = bruhmoment[1].split('"')[1]
+            llmparam_str = llmparam.strip()
+            llmparam_list = llmparam_str.split(", ")
+            llmparam_dict = {}
+            for param in llmparam_list:
+                 key, value = param.split("=")
+                 if value.isdigit():
+                     value = int(value)
+                 elif value.replace('.', '', 1).isdigit():
+                     value = float(value)
+                 elif value in ["True", "False"]:
+                     value = value == "True"
+                 llmparam_dict[key] = value
+            if(bruhmoment[0]!= model_name_or_path):
+                 model_name_or_path = bruhmoment[0]
+                 generator = pipeline("text-generation", model= model_name_or_path ,device_map='cuda')
+            print(bruhmoment[0]+llmparam)                
+            response = generator(user_input, **llmparam_dict)[0]['generated_text']
         except Exception as e:
-            print("silly")
+            print(e,"silly")
         response = response.replace(user_input, '')
         conv_hist += "Ian : " + response.strip('\n') + '\n'
         response = response.replace("You: ","")
@@ -96,7 +118,6 @@ if __name__ == '__main__':
         # Update the Gradio interface after completing the loop
         outfile = "results/result_voice.mp4"  # Replace with actual outfile path
         passit = demo+conv_hist
-        output_file_path = "passit_output.txt"
 
         # Write the content of the 'passit' variable to the text file
         with open(output_file_path, "w") as file:
